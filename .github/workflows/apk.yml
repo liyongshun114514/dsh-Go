@@ -77,7 +77,8 @@ jobs:
           code=$(python3 tooling/build_number.py)
           printf 'sdk.dir=%s\nflutter.sdk=%s\nflutter.versionName=%s\nflutter.versionCode=%s\n' \
             "$ANDROID_HOME" "$FLUTTER_ROOT" "$version" "$code" > app/android/local.properties
-          printf 'APK_VERSION=%s\nAPK_CODE=%s\n' "$version" "$code" >> "$GITHUB_ENV"
+          defines=$(printf 'DSH_APP_VERSION=%s+%s' "$version" "$code" | base64 -w 0)
+          printf 'APK_VERSION=%s\nAPK_CODE=%s\nAPK_DART_DEFINES=%s\n' "$version" "$code" "$defines" >> "$GITHUB_ENV"
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
@@ -86,7 +87,7 @@ jobs:
 
       - name: Assemble Arm64 release APK
         working-directory: app/android
-        run: gradle --stacktrace -Ptarget-platform=android-arm64 :app:assembleArm64Release
+        run: gradle --stacktrace -Ptarget-platform=android-arm64 "-Pdart-defines=$APK_DART_DEFINES" :app:assembleArm64Release
 
       - name: Verify packaged runtime, launcher and JNI
         run: |
