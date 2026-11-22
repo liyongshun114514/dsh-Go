@@ -82,7 +82,7 @@ class LauncherIconsTest {
         id: Int = 1,
         top: String? = PKG,
     ) = LauncherIcons.Task(
-        if (viaOrigActivity) listOf("$PKG.MainActivity", opened.className) else listOf(opened.className, null),
+        if (viaOrigActivity) listOf("io.github.ccch1mneyyy.dsh_app.MainActivity", opened.className) else listOf(opened.className, null),
         activities,
         id,
         top,

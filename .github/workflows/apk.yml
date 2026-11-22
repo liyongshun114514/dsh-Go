@@ -3,7 +3,7 @@ name: Build APK
 on:
   workflow_dispatch:
   push:
-    branches: [main, 'fix/**']
+    branches: [main]
 
 permissions:
   contents: read
@@ -56,8 +56,16 @@ jobs:
         working-directory: app/android
         run: gradle --stacktrace -Ptarget-platform=android-arm64 :app:assembleArm64Debug
 
-      - name: Verify APK
-        run: test -s app/build/app/outputs/apk/arm64/debug/app-arm64-debug.apk
+      - name: Verify APK package and launcher
+        shell: bash
+        run: |
+          apk=app/build/app/outputs/apk/arm64/debug/app-arm64-debug.apk
+          test -s "$apk"
+          aapt=$(printf '%s\n' "$ANDROID_HOME"/build-tools/*/aapt | sort -V | tail -n 1)
+          "$aapt" dump badging "$apk" > "$RUNNER_TEMP/apk-badging.txt"
+          grep -F "package: name='io.github.ccch1mneyyy.dsh_app_next'" "$RUNNER_TEMP/apk-badging.txt"
+          grep -F "launchable-activity: name='io.github.ccch1mneyyy.dsh_app.LauncherMist'" "$RUNNER_TEMP/apk-badging.txt"
+          sha256sum "$apk"
 
       - name: Upload APK
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
