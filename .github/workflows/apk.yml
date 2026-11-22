@@ -19,20 +19,49 @@ env:
 
 jobs:
   build-apk:
-    name: Arm64 debug APK
+    name: Complete Arm64 APK
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 90
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
 
+      - name: Test APK runtime checks
+        run: python3 -m unittest discover -s tooling -p 'test_check_apk_runtime.py' -v
+
+      - name: Restore runtime downloads
+        id: runtime-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: runtime/.cache
+          key: runtime-downloads-v1-${{ hashFiles('runtime/build-runtime.sh', 'runtime/locks/**') }}
+          restore-keys: runtime-downloads-v1-
+
+      - name: Build bundled Ubuntu and DSH runtime
+        run: bash runtime/build-runtime.sh arm64-v8a
+
+      - name: Verify runtime bundle
+        run: python3 -I tooling/check_runtime_bundle.py arm64
+
+      - name: Save runtime downloads
+        if: steps.runtime-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: runtime/.cache
+          key: ${{ steps.runtime-cache.outputs.cache-primary-key }}
+
       - name: Set up Java
         uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
         with:
           distribution: temurin
           java-version: '17'
+
+      - name: Build bundled tawcroot launcher
+        run: |
+          sdkmanager 'ndk;28.2.13676358'
+          python3 -I runtime/tawcroot/build.py --ndk "$ANDROID_HOME/ndk/28.2.13676358"
 
       - name: Set up Flutter
         uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
@@ -41,36 +70,44 @@ jobs:
           channel: stable
           cache: true
 
-      - name: Resolve Flutter dependencies
-        working-directory: app
+      - name: Resolve Flutter dependencies and stamp version
         run: |
-          flutter pub get --enforce-lockfile
-          printf 'sdk.dir=%s\nflutter.sdk=%s\n' "$ANDROID_HOME" "$FLUTTER_ROOT" > android/local.properties
+          (cd app && flutter pub get --enforce-lockfile)
+          version=$(sed -n 's/^version: *\([^+ ]*\).*/\1/p' app/pubspec.yaml)
+          code=$(python3 tooling/build_number.py)
+          printf 'sdk.dir=%s\nflutter.sdk=%s\nflutter.versionName=%s\nflutter.versionCode=%s\n' \
+            "$ANDROID_HOME" "$FLUTTER_ROOT" "$version" "$code" > app/android/local.properties
+          printf 'APK_VERSION=%s\nAPK_CODE=%s\n' "$version" "$code" >> "$GITHUB_ENV"
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
         with:
           gradle-version: ${{ env.GRADLE_VERSION }}
 
-      - name: Assemble Arm64 debug APK
+      - name: Assemble Arm64 release APK
         working-directory: app/android
-        run: gradle --stacktrace -Ptarget-platform=android-arm64 :app:assembleArm64Debug
+        run: gradle --stacktrace -Ptarget-platform=android-arm64 :app:assembleArm64Release
 
-      - name: Verify APK package and launcher
-        shell: bash
+      - name: Verify packaged runtime, launcher and JNI
         run: |
-          apk=app/build/app/outputs/apk/arm64/debug/app-arm64-debug.apk
-          test -s "$apk"
-          aapt=$(printf '%s\n' "$ANDROID_HOME"/build-tools/*/aapt | sort -V | tail -n 1)
-          "$aapt" dump badging "$apk" > "$RUNNER_TEMP/apk-badging.txt"
-          grep -F "package: name='io.github.ccch1mneyyy.dsh_app_next'" "$RUNNER_TEMP/apk-badging.txt"
-          grep -F "launchable-activity: name='io.github.ccch1mneyyy.dsh_app.LauncherMist'" "$RUNNER_TEMP/apk-badging.txt"
-          sha256sum "$apk"
+          apk=app/build/app/outputs/apk/arm64/release/app-arm64-release.apk
+          apkanalyzer=$(command -v apkanalyzer)
+          "$apkanalyzer" manifest print "$apk" > "$RUNNER_TEMP/apk-manifest.xml"
+          test "$("$apkanalyzer" manifest application-id "$apk")" = io.github.ccch1mneyyy.dsh_app_next
+          test "$("$apkanalyzer" manifest version-name "$apk")" = "$APK_VERSION"
+          test "$("$apkanalyzer" manifest version-code "$apk")" = "$APK_CODE"
+          python3 tooling/check_apk_runtime.py "$apk" --manifest "$RUNNER_TEMP/apk-manifest.xml"
+          python3 -I tooling/check_apk_jni.py "$apk"
+          mkdir -p dist
+          cp "$apk" dist/dsh-go-next-arm64.apk
+          (cd dist && sha256sum dsh-go-next-arm64.apk > SHA256SUMS)
+          cat dist/SHA256SUMS
 
-      - name: Upload APK
+      - name: Upload complete APK
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: dsh-go-next-arm64-debug
-          path: app/build/app/outputs/apk/arm64/debug/app-arm64-debug.apk
+          name: dsh-go-next-arm64
+          path: dist/
+          compression-level: 0
           if-no-files-found: error
           retention-days: 14
