@@ -452,7 +452,7 @@ jobs:
           retention-days: 7
 
   android:
-    name: Android JVM
+    name: Android build and JVM
     needs: changes
     if: needs.changes.outputs.app == 'true'
     runs-on: ubuntu-24.04
@@ -476,10 +476,11 @@ jobs:
       - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
         with:
           gradle-version: ${{ env.GRADLE_VERSION }}
-      # Without the Flutter build task: it compiles the Dart side for the APK, close to a
-      # minute, and the JVM tests read none of it.
-      - working-directory: app/android
-        run: gradle --stacktrace :app:testArm64DebugUnitTest -x :app:compileFlutterBuildArm64Debug
+      # Assemble the public debug APK as part of CI. This intentionally uses
+      # debug signing and does not require the private release runtime bundle.
+      - name: Assemble Arm64 debug APK and run JVM tests
+        working-directory: app/android
+        run: gradle --stacktrace -Ptarget-platform=android-arm64 :app:assembleArm64Debug :app:testArm64DebugUnitTest
 
   # Two minutes that need kotlinc and a JVM but nothing of Flutter or Gradle: on a runner of
   # its own they come off the Android job, the longest one left.

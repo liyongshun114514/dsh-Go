@@ -7,6 +7,30 @@ import '../../common/expand_reveal.dart';
 import '../../pets/pet_perch.dart';
 import '../../theme/theme.dart';
 
+/// Controls whether dock glass surfaces may share a backdrop sample. Folded
+/// cards overlap, so grouped filters would sample each other and can produce
+/// dark rectangular patches on the cards behind the front one.
+class DockBackdropScope extends InheritedWidget {
+  const DockBackdropScope({
+    super.key,
+    required this.grouped,
+    this.blendMode = BlendMode.srcOver,
+    required super.child,
+  });
+
+  final bool grouped;
+  final BlendMode blendMode;
+
+  static DockBackdropScope? _of(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<DockBackdropScope>();
+
+  static bool groupedOf(BuildContext context) => _of(context)?.grouped ?? true;
+  static BlendMode blendModeOf(BuildContext context) => _of(context)?.blendMode ?? BlendMode.srcOver;
+
+  @override
+  bool updateShouldNotify(DockBackdropScope oldWidget) => grouped != oldWidget.grouped || blendMode != oldWidget.blendMode;
+}
+
 /// 停靠在输入条上方的一组条:和思考胶囊同高、同字号、同左右边,一根接一根
 /// 往上叠,间距都是 [gap]。
 ///

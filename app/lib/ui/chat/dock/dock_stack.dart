@@ -188,9 +188,15 @@ class _DockStackState extends ConsumerState<DockStack> with TickerProviderStateM
         children: [
           // Folded, the deck takes the tap: the cards neither answer it nor read out.
           for (final card in widget.cards)
-            IgnorePointer(
-              ignoring: folded,
-              child: ExcludeSemantics(excluding: folded, child: card),
+            DockBackdropScope(
+              // Grouped backdrop filters require disjoint bounds. Folded cards
+              // overlap by design, so let every card sample the chat behind it.
+              grouped: !deck || _curve.value >= 0.999,
+              blendMode: deck && _curve.value < 0.999 ? BlendMode.src : BlendMode.srcOver,
+              child: IgnorePointer(
+                ignoring: folded,
+                child: ExcludeSemantics(excluding: folded, child: card),
+              ),
             ),
           ?accessory,
           ExcludeSemantics(

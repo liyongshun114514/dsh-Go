@@ -201,6 +201,67 @@ void main() {
     expect(AssistantStreamEvent.fromFrame({'type': 'later'}), isA<UnknownFrameEvent>());
   });
 
+  group('tagged reasoning in text blocks', () {
+    test('moves complete thinking tags out of visible text', () {
+      final parsed = splitTaggedReasoning('answer <thinking>step one</thinking> done');
+      expect(parsed.text, 'answer  done');
+      expect(parsed.reasoning, 'step one');
+    });
+
+    test('supports model spelling variants and whitespace in tags', () {
+      final parsed = splitTaggedReasoning('< think >one</ think >A<analysis>two</analysis>B');
+      expect(parsed.text, 'AB');
+      expect(parsed.reasoning, 'onetwo');
+    });
+
+    test('keeps an incomplete opening tag in reasoning while streaming', () {
+      expect(splitTaggedReasoning('answer <think', running: true), (text: 'answer ', reasoning: '<think'));
+      expect(splitTaggedReasoning('answer <think ', running: true), (text: 'answer ', reasoning: '<think '));
+      expect(splitTaggedReasoning('<thinking>step', running: true), (text: '', reasoning: 'step'));
+    });
+
+    test('only assistant messages interpret reasoning tags', () {
+      final message = Message.fromJson({
+        'id': 'u1',
+        'role': 'user',
+        'content': [
+          {'type': 'text', 'text': 'Please explain <think>x</think> literally'},
+        ],
+        'source': {'kind': 'user'},
+      });
+      expect(message.text, 'Please explain <think>x</think> literally');
+      expect(message.reasoning, isEmpty);
+    });
+
+    test('keeps tag state across text parts', () {
+      final message = Message.fromJson({
+        'id': 'a2',
+        'role': 'assistant',
+        'content': [
+          {'type': 'text', 'text': '<think>secret'},
+          {'type': 'text', 'text': ' continued</think>answer'},
+        ],
+        'source': {'kind': 'model'},
+      });
+      expect(message.text, 'answer');
+      expect(message.reasoning, 'secret continued');
+    });
+
+    test('message projections combine explicit and tagged reasoning', () {
+      final message = Message.fromJson({
+        'id': 'a1',
+        'role': 'assistant',
+        'content': [
+          {'type': 'text', 'text': '<think>hidden</think>visible'},
+          {'type': 'reasoning', 'text': 'explicit'},
+        ],
+        'source': {'kind': 'model'},
+      });
+      expect(message.text, 'visible');
+      expect(message.reasoning, 'explicithidden');
+    });
+  });
+
   test('workspace follow frames', () {
     final updates = loadJsonl('workspace_follow.jsonl').map(WorkspaceUpdate.fromJson).toList();
     expect(updates.first, isA<WorkspaceBaseline>());

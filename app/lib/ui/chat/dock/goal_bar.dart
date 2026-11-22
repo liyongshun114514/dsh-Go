@@ -37,7 +37,7 @@ class GoalBar extends StatelessWidget {
       child: GlassSurface(
         tier: GlassTier.chrome,
         borderRadius: DockMetrics.shape,
-        grouped: true,
+        grouped: DockBackdropScope.groupedOf(context),
         onTap: onTap,
         child: DockRow(
           leading: DockGlyph.icon(look.icon, color: look.iconColor),

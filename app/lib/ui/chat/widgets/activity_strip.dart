@@ -15,6 +15,7 @@ import '../../../state/run_pulse.dart';
 import '../../pets/pet_perch.dart';
 import '../../theme/theme.dart';
 import '../activity_copy.dart';
+import '../dock/dock_pill.dart';
 import '../run_info.dart';
 import 'live_clock.dart';
 import 'whale_tail.dart';
@@ -220,7 +221,7 @@ class _ActivityStripState extends State<ActivityStrip> {
         tier: GlassTier.chrome,
         stadium: true,
         // One backdrop sample with the deck's other bars (chat page).
-        grouped: true,
+        grouped: DockBackdropScope.groupedOf(context),
         onTap: widget.onTap,
         onLongPress: _showStats,
         child: ConstrainedBox(

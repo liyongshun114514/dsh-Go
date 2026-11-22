@@ -14,6 +14,56 @@ import 'json.dart';
 // Content parts and messages
 // =============================================================================
 
+final RegExp _reasoningTag = RegExp(r'<\s*(/?)\s*(think|thinking|reasoning|analysis)\s*>', caseSensitive: false);
+bool _isIncompleteReasoningTag(String value) {
+  final start = value.lastIndexOf('<');
+  if (start < 0 || value.substring(start).contains('>')) return false;
+  var candidate = value.substring(start + 1).trim();
+  if (candidate.startsWith('/')) return false;
+  if (candidate.isEmpty || candidate.contains(RegExp(r'[^a-z]', caseSensitive: false))) return false;
+  return const ['think', 'thinking', 'reasoning', 'analysis'].any((tag) => tag.startsWith(candidate.toLowerCase()));
+}
+
+/// Moves reasoning that a model wrapped in a text tag back into the thinking
+/// field. Some providers expose reasoning as a separate content block, while
+/// others put `<think>`/`<thinking>` markup in their text stream.
+///
+/// An unfinished opening block is kept in reasoning while a stream is live so
+/// its partial contents cannot flash into the answer. The parser only removes
+/// recognized tags; ordinary angle-bracket text remains untouched.
+({String text, String reasoning}) splitTaggedReasoning(String source, {bool running = false}) {
+  final text = StringBuffer();
+  final reasoning = StringBuffer();
+  var cursor = 0;
+  var inReasoning = false;
+  for (final match in _reasoningTag.allMatches(source)) {
+    if (match.start < cursor) continue;
+    final before = source.substring(cursor, match.start);
+    final closing = match.group(1) == '/';
+    if (closing != inReasoning) {
+      (inReasoning ? reasoning : text)
+        ..write(before)
+        ..write(match.group(0));
+      cursor = match.end;
+      continue;
+    }
+    (inReasoning ? reasoning : text).write(before);
+    inReasoning = !closing;
+    cursor = match.end;
+  }
+  final tail = source.substring(cursor);
+  if (inReasoning) {
+    reasoning.write(tail);
+  } else if (running && _isIncompleteReasoningTag(tail)) {
+    final start = tail.lastIndexOf('<');
+    text.write(tail.substring(0, start));
+    reasoning.write(tail.substring(start));
+  } else {
+    text.write(tail);
+  }
+  return (text: text.toString(), reasoning: reasoning.toString());
+}
+
 /// One content block of a message (`ContentBlock` on the wire).
 sealed class Part {
   const Part();
@@ -238,8 +288,12 @@ class Message {
   final bool isError;
   final Map<String, Object?> raw;
 
-  /// Concatenated visible text (text parts only).
-  String get text => parts.whereType<TextPart>().map((p) => p.text).join();
+  /// Concatenated visible text (text parts only). Reasoning tags emitted by
+  /// assistant providers are removed from this projection.
+  String get text {
+    final raw = parts.whereType<TextPart>().map((p) => p.text).join();
+    return role == MessageRole.assistant ? splitTaggedReasoning(raw).text : raw;
+  }
 
   /// Explicit final-answer text in the known pi-ai v2 replay format.
   /// Text blocks are joined for display, so any final block keeps the message.
@@ -267,7 +321,13 @@ class Message {
     return false;
   }
 
-  String get reasoning => parts.whereType<ReasoningPart>().map((p) => p.text).join();
+  /// Explicit reasoning blocks plus reasoning tags embedded in text blocks.
+  String get reasoning {
+    final explicit = parts.whereType<ReasoningPart>().map((p) => p.text).join();
+    if (role != MessageRole.assistant) return explicit;
+    final tagged = splitTaggedReasoning(parts.whereType<TextPart>().map((p) => p.text).join()).reasoning;
+    return explicit + tagged;
+  }
 
   List<ToolCallPart> get toolCalls => parts.whereType<ToolCallPart>().toList(growable: false);
 }

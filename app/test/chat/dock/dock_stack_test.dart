@@ -39,6 +39,24 @@ class _Card extends StatelessWidget {
 }
 
 /// A bar that rises in on its own, like the activity strip.
+class _ScopeCard extends StatelessWidget {
+  const _ScopeCard(this.label);
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.only(bottom: DockMetrics.gap),
+    child: SizedBox(
+      key: ValueKey(label),
+      height: DockMetrics.height,
+      child: Builder(
+        builder: (context) => Text('$label:${DockBackdropScope.groupedOf(context)}:${DockBackdropScope.blendModeOf(context)}'),
+      ),
+    ),
+  );
+}
+
 class _Rising extends StatefulWidget {
   const _Rising();
 
@@ -136,6 +154,19 @@ void main() {
     await pumpFrames(tester);
     expect(_deckHeight(tester), 2 * DockStackMetrics.peek + _bar);
     expect((await SharedPreferences.getInstance()).getBool(DockFoldController.key), isTrue);
+  });
+
+  testWidgets('overlapping folded cards disable grouped backdrop compositing', (tester) async {
+    usePhoneView(tester);
+    await tester.pumpWidget(_deck(const [_ScopeCard('first'), _ScopeCard('second')]));
+    await pumpFrames(tester);
+    expect(find.text('first:false:BlendMode.src'), findsOneWidget);
+    expect(find.text('second:false:BlendMode.src'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('second')));
+    await pumpFrames(tester);
+    expect(find.text('first:true:BlendMode.srcOver'), findsOneWidget);
+    expect(find.text('second:true:BlendMode.srcOver'), findsOneWidget);
   });
 
   testWidgets('the fold moves, it does not jump', (tester) async {

@@ -692,14 +692,14 @@ class _Draft {
   String get rowKey => 'm$turn.$step';
 
   List<ChatItem> items({required bool useRowKey}) {
-    final text = StringBuffer();
+    final rawText = StringBuffer();
     final reasoning = StringBuffer();
     final tools = <ChatItem>[];
     for (final block in blocks.values) {
       final finished = block.finished;
       switch (finished) {
         case TextPart(text: final t):
-          text.write(t);
+          rawText.write(t);
           continue;
         case ReasoningPart(text: final t):
           reasoning.write(t);
@@ -719,7 +719,7 @@ class _Draft {
       }
       switch (block.type) {
         case 'text':
-          text.write(block.text);
+          rawText.write(block.text);
         case 'reasoning':
           reasoning.write(block.text);
         case 'tool-call':
@@ -733,13 +733,16 @@ class _Draft {
           );
       }
     }
+    final parsed = splitTaggedReasoning(rawText.toString(), running: streaming);
+    final parsedText = parsed.text;
+    final parsedReasoning = reasoning.toString() + parsed.reasoning;
     return [
-      if (text.isNotEmpty || reasoning.isNotEmpty)
+      if (parsedText.isNotEmpty || parsedReasoning.isNotEmpty)
         AssistantChatItem(
           id: 'd$attemptId',
           rowKey: useRowKey ? rowKey : null,
-          text: text.toString(),
-          reasoning: reasoning.toString(),
+          text: parsedText,
+          reasoning: parsedReasoning,
           streaming: streaming,
         ),
       ...tools,

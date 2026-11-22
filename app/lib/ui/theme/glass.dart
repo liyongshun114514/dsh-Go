@@ -47,6 +47,7 @@ class GlassSurface extends StatelessWidget {
     this.padding,
     this.blur,
     this.grouped = false,
+    this.blendMode = BlendMode.srcOver,
     this.settled,
     this.style,
     this.onTap,
@@ -74,6 +75,11 @@ class GlassSurface extends StatelessWidget {
 
   /// 与同一 `BackdropGroup` 下的其他玻璃共享一次背景采样。
   final bool grouped;
+
+  /// How the filtered backdrop is composited. Overlapping dock cards use
+  /// [BlendMode.src] while they fade so a back card cannot darken itself via
+  /// an opacity save layer.
+  final BlendMode blendMode;
 
   /// 会动的玻璃(升起、被拖动的弹层)。0 = 在动:不采样背景,用不透明填充。
   /// 停稳后走向 1:模糊立刻开,藏在近乎不透明的填充后面,填充渐变回玻璃,所以
@@ -154,8 +160,8 @@ class GlassSurface extends StatelessWidget {
       final config = _filterFor(s.blurs ? s.blurSigma : 14, s.saturation);
       final sampling = settled != 0;
       content = grouped
-          ? BackdropFilter.grouped(filterConfig: config, enabled: sampling, child: content)
-          : BackdropFilter(filterConfig: config, enabled: sampling, child: content);
+          ? BackdropFilter.grouped(filterConfig: config, enabled: sampling, blendMode: blendMode, child: content)
+          : BackdropFilter(filterConfig: config, enabled: sampling, blendMode: blendMode, child: content);
       content = _clip(content);
     }
 
