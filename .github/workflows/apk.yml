@@ -60,7 +60,11 @@ jobs:
 
       - name: Build bundled tawcroot launcher
         run: |
-          sdkmanager 'ndk;28.2.13676358'
+          android_tools="$ANDROID_HOME/cmdline-tools/latest/bin"
+          test -x "$android_tools/sdkmanager"
+          test -x "$android_tools/apkanalyzer"
+          echo "$android_tools" >> "$GITHUB_PATH"
+          "$android_tools/sdkmanager" 'ndk;28.2.13676358'
           python3 -I runtime/tawcroot/build.py --ndk "$ANDROID_HOME/ndk/28.2.13676358"
 
       - name: Set up Flutter
