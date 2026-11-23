@@ -96,8 +96,15 @@ jobs:
           defines=$(printf 'DSH_APP_VERSION=%s+%s' "$version" "$code" | base64 -w 0)
           printf 'APK_VERSION=%s\nAPK_CODE=%s\nAPK_DART_DEFINES=%s\n' "$version" "$code" "$defines" >> "$GITHUB_ENV"
 
+      - name: Install widget test fonts
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y fonts-noto-cjk fonts-noto-cjk-extra
+
       - name: Test chat dock rendering
         working-directory: app
+        env:
+          DSH_TEST_FONT_DIR: /usr/share/fonts/opentype/noto
         run: flutter test --no-pub test/chat/dock/dock_stack_test.dart test/chat/dock/dock_backdrop_test.dart
 
       - name: Set up Gradle
