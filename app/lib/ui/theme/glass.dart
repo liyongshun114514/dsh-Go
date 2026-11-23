@@ -76,9 +76,8 @@ class GlassSurface extends StatelessWidget {
   /// 与同一 `BackdropGroup` 下的其他玻璃共享一次背景采样。
   final bool grouped;
 
-  /// How the filtered backdrop is composited. Overlapping dock cards use
-  /// [BlendMode.src] while they fade so a back card cannot darken itself via
-  /// an opacity save layer.
+  /// How the filtered backdrop is composited. Prefer [BlendMode.srcOver];
+  /// other modes are renderer-dependent and must be verified on device.
   final BlendMode blendMode;
 
   /// 会动的玻璃(升起、被拖动的弹层)。0 = 在动:不采样背景,用不透明填充。

@@ -105,7 +105,21 @@ jobs:
         working-directory: app
         env:
           DSH_TEST_FONT_DIR: /usr/share/fonts/opentype/noto
-        run: flutter test --no-pub test/chat/dock/dock_stack_test.dart test/chat/dock/dock_backdrop_test.dart
+          DSH_DOCK_PREVIEW_DIR: ${{ runner.temp }}/dock-previews
+        run: >-
+          flutter test --no-pub
+          test/chat/dock/dock_stack_test.dart
+          test/chat/dock/dock_backdrop_test.dart
+          test/landscape/landscape_geometry_test.dart
+
+      - name: Upload dock rendering previews
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: dock-rendering-previews
+          path: ${{ runner.temp }}/dock-previews/
+          if-no-files-found: ignore
+          retention-days: 7
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1

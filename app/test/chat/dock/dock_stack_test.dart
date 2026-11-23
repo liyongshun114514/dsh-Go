@@ -160,13 +160,13 @@ void main() {
     usePhoneView(tester);
     await tester.pumpWidget(_deck(const [_ScopeCard('first'), _ScopeCard('second')]));
     await pumpFrames(tester);
-    expect(find.text('first:false:BlendMode.src'), findsOneWidget);
-    expect(find.text('second:false:BlendMode.src'), findsOneWidget);
+    expect(find.text('first:false:BlendMode.srcOver'), findsOneWidget);
+    expect(find.text('second:false:BlendMode.srcOver'), findsOneWidget);
 
     await tester.tap(find.byKey(const ValueKey('second')));
     await pumpFrames(tester);
-    expect(find.text('first:false:BlendMode.src'), findsOneWidget);
-    expect(find.text('second:false:BlendMode.src'), findsOneWidget);
+    expect(find.text('first:false:BlendMode.srcOver'), findsOneWidget);
+    expect(find.text('second:false:BlendMode.srcOver'), findsOneWidget);
   });
 
   testWidgets('the fold moves, it does not jump', (tester) async {

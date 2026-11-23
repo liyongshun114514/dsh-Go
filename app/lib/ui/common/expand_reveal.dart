@@ -17,6 +17,7 @@ class ExpandReveal extends StatefulWidget {
     this.duration = AppMotion.collapse,
     this.curve = AppMotion.collapseCurve,
     this.clipWhenOpen = true,
+    this.fade = true,
   });
 
   final bool open;
@@ -29,6 +30,10 @@ class ExpandReveal extends StatefulWidget {
   /// Keep clipping after the reveal finishes. Disable for glass with an outer
   /// shadow; the transition itself still clips while opening or closing.
   final bool clipWhenOpen;
+
+  /// Disable for backdrop-filtered glass: fading the whole surface creates a
+  /// transparent save layer instead of sampling the page underneath it.
+  final bool fade;
 
   @override
   State<ExpandReveal> createState() => _ExpandRevealState();
@@ -88,7 +93,7 @@ class _ExpandRevealState extends State<ExpandReveal> with SingleTickerProviderSt
     // 宽度钉回父级的宽度,内容不会缩成一团居中。
     return LayoutBuilder(
       builder: (context, constraints) {
-        Widget child = FadeTransition(opacity: _fade, child: widget.child);
+        Widget child = widget.fade ? FadeTransition(opacity: _fade, child: widget.child) : widget.child;
         if (constraints.hasBoundedWidth) {
           child = SizedBox(width: constraints.maxWidth, child: child);
         }

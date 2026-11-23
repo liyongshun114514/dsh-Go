@@ -65,9 +65,6 @@ abstract final class DockStackMetrics {
   /// Each card further back is this much smaller.
   static const shrink = 0.05;
 
-  /// And this much fainter.
-  static const fade = 0.18;
-
   /// Between the front card and [DockStack.accessory].
   static const accessoryGap = 8.0;
 
@@ -247,9 +244,8 @@ class _FoldButton extends StatelessWidget {
         key: const ValueKey('dock-fold'),
         tier: GlassTier.chrome,
         stadium: true,
-        // The fold button fades in its own opacity layer too.
         grouped: false,
-        blendMode: BlendMode.src,
+        blendMode: BlendMode.srcOver,
         onTap: onTap,
         child: SizedBox.square(
           dimension: DockStackMetrics.foldSize,
@@ -301,7 +297,6 @@ class DockStackParentData extends ContainerBoxParentData<RenderBox> {
 
   final clipHandle = LayerHandle<ClipRectLayer>();
   final transformHandle = LayerHandle<TransformLayer>();
-  final opacityHandle = LayerHandle<OpacityLayer>();
 
   Matrix4 transformFor(Size size) {
     final o = offset;
@@ -319,7 +314,7 @@ typedef _Place = ({double y, double scale, double opacity, double clip, double d
 /// Spread, the cards stand one above another as a column. Folded, the front
 /// card sits at the bottom and each card behind it rises
 /// [DockStackMetrics.peek] above the next one in, [DockStackMetrics.shrink]
-/// smaller and [DockStackMetrics.fade] fainter, cut off where the card in
+/// smaller, cut off where the card in
 /// front of it begins. Every card moves straight between its places; the
 /// deck's height follows.
 ///
@@ -550,7 +545,7 @@ class RenderDockStack extends RenderBox
         y: cardY,
         scale: scale,
         // Beyond the last peek a card hides behind the one before it.
-        opacity: k >= DockStackMetrics.peeks ? 1 - frontWeight : 1 - DockStackMetrics.fade * step,
+        opacity: k >= DockStackMetrics.peeks ? 1 - frontWeight : 1,
         clip: ((nextTop - cardY) / scale).clamp(0.0, height(i)),
         depth: k + 1.0,
       );
@@ -573,19 +568,10 @@ class RenderDockStack extends RenderBox
   void paint(PaintingContext context, Offset offset) {
     for (final child in _paintOrder) {
       final data = child.parentData! as DockStackParentData;
-      void draw(PaintingContext context, Offset offset) {
-        if (data.opacity >= 1) {
-          data.opacityHandle.layer = null;
-          context.paintChild(child, offset);
-        } else if (data.opacity > 0) {
-          data.opacityHandle.layer = context.pushOpacity(
-            offset,
-            (data.opacity * 255).round(),
-            (context, offset) => context.paintChild(child, offset),
-            oldLayer: data.opacityHandle.layer,
-          );
-        }
-      }
+      // Backdrop filters must read the page, not an opacity save layer.
+      // Hidden cards still skip painting; peeks keep their normal glass color.
+      if (data.opacity <= 0) continue;
+      void draw(PaintingContext context, Offset offset) => context.paintChild(child, offset);
 
       void place(PaintingContext context, Offset offset) {
         data.transformHandle.layer = context.pushTransform(
@@ -642,7 +628,6 @@ class RenderDockStack extends RenderBox
       final data = child.parentData! as DockStackParentData;
       data.clipHandle.layer = null;
       data.transformHandle.layer = null;
-      data.opacityHandle.layer = null;
     }
     super.detach();
   }

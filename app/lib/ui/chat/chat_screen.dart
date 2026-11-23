@@ -2160,6 +2160,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> with WidgetsBindingObse
                                 // while a phone on its side types.
                                 _DockAside(
                                   aside: typing,
+                                  fade: false,
                                   child: BackdropGroup(
                                     child: DockStack(
                                       cards: [
@@ -2469,10 +2470,13 @@ class _BalanceBannerSlot extends ConsumerWidget {
 /// shadows and shared glass stay as they are, and the bars stay mounted, so
 /// an open checklist is still open when the keyboard goes.
 class _DockAside extends StatefulWidget {
-  const _DockAside({required this.aside, required this.child});
+  const _DockAside({required this.aside, required this.child, this.fade = true});
 
   final bool aside;
   final Widget child;
+
+  /// Backdrop-filtered bars reveal geometrically, without an opacity buffer.
+  final bool fade;
 
   @override
   State<_DockAside> createState() => _DockAsideState();
@@ -2512,12 +2516,17 @@ class _DockAsideState extends State<_DockAside> with SingleTickerProviderStateMi
           excluding: t == 0,
           child: TickerMode(
             enabled: t > 0,
-            child: Align(
-              alignment: Alignment.bottomCenter,
-              heightFactor: t,
-              // Gone before the space closes, so nothing shows over the
-              // chat while it folds.
-              child: Opacity(opacity: ((t - 0.4) / 0.6).clamp(0.0, 1.0), child: child),
+            child: ClipRect(
+              // Glass uses a geometric reveal instead of an opacity save
+              // layer. At rest its outer shadow remains unclipped.
+              clipBehavior: !widget.fade && t < 1 ? Clip.hardEdge : Clip.none,
+              child: Align(
+                alignment: Alignment.bottomCenter,
+                heightFactor: t,
+                child: widget.fade
+                    ? Opacity(opacity: ((t - 0.4) / 0.6).clamp(0.0, 1.0), child: child)
+                    : child,
+              ),
             ),
           ),
         ),

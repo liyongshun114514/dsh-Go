@@ -131,10 +131,11 @@ void main() {
         // Folded to nothing toward the composer (still mounted, unseen).
         final fold = tester.widget<Align>(find.ancestor(of: find.byType(DockStack), matching: find.byType(Align)).first);
         expect(fold.heightFactor, 0);
-        final fade = tester.widget<Opacity>(
-          find.ancestor(of: find.byType(DockStack), matching: find.byType(Opacity)).first,
+        final clip = tester.widget<ClipRect>(
+          find.ancestor(of: find.byType(DockStack), matching: find.byType(ClipRect)).first,
         );
-        expect(fade.opacity, 0);
+        expect(clip.clipBehavior, Clip.hardEdge);
+        expect(find.ancestor(of: find.byType(DockStack), matching: find.byType(Opacity)), findsNothing);
         expect(find.byType(DockStack).hitTestable(), findsNothing);
         expect(find.byKey(const ValueKey('chat-title-pill')).hitTestable(), findsNothing);
         // The last row of the run, whole, between the status bar and the
@@ -149,6 +150,9 @@ void main() {
         setKeyboard(tester, win, 0);
         await pumpFrames(tester, 8);
         expect(find.byType(DockStack).hitTestable(), findsWidgets);
+        expect(tester.widget<ClipRect>(
+          find.ancestor(of: find.byType(DockStack), matching: find.byType(ClipRect)).first,
+        ).clipBehavior, Clip.none);
         expect(find.byKey(const ValueKey('chat-title-pill')).hitTestable(), findsOneWidget);
       });
 
