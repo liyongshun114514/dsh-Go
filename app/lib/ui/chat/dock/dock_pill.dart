@@ -7,14 +7,15 @@ import '../../common/expand_reveal.dart';
 import '../../pets/pet_perch.dart';
 import '../../theme/theme.dart';
 
-/// Controls whether dock glass surfaces may share a backdrop sample. Folded
-/// cards overlap, so grouped filters would sample each other and can produce
-/// dark rectangular patches on the cards behind the front one.
+/// Keeps dock filters independent, including when the cards are spread out.
+/// The cards have separate transforms, clips and opacity layers; sharing an
+/// Impeller backdrop snapshot across those layers can expose rectangular
+/// bounds. Source blending also avoids re-compositing a fading card's backdrop.
 class DockBackdropScope extends InheritedWidget {
   const DockBackdropScope({
     super.key,
-    required this.grouped,
-    this.blendMode = BlendMode.srcOver,
+    this.grouped = false,
+    this.blendMode = BlendMode.src,
     required super.child,
   });
 
@@ -24,8 +25,8 @@ class DockBackdropScope extends InheritedWidget {
   static DockBackdropScope? _of(BuildContext context) =>
       context.dependOnInheritedWidgetOfExactType<DockBackdropScope>();
 
-  static bool groupedOf(BuildContext context) => _of(context)?.grouped ?? true;
-  static BlendMode blendModeOf(BuildContext context) => _of(context)?.blendMode ?? BlendMode.srcOver;
+  static bool groupedOf(BuildContext context) => _of(context)?.grouped ?? false;
+  static BlendMode blendModeOf(BuildContext context) => _of(context)?.blendMode ?? BlendMode.src;
 
   @override
   bool updateShouldNotify(DockBackdropScope oldWidget) => grouped != oldWidget.grouped || blendMode != oldWidget.blendMode;
@@ -210,6 +211,9 @@ class _DockSlotState extends State<DockSlot> {
       open: child != null,
       duration: AppMotion.standard,
       curve: AppMotion.std,
+      // Once revealed, the glass shadow must extend beyond the slot rather
+      // than ending at a hard rectangular boundary.
+      clipWhenOpen: false,
       child: Padding(
         padding: const EdgeInsets.only(bottom: DockMetrics.gap),
         // The chat page's pet may stand on the bar (not while it folds away).

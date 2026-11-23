@@ -15,6 +15,7 @@ import '../../../plugins/native/native_model.dart';
 import '../../../plugins/native/native_state.dart';
 import '../../../plugins/native/native_surface.dart';
 import '../../../state/plugins_state.dart';
+import '../../chat/dock/dock_pill.dart';
 import '../../pets/pet_perch.dart';
 import '../../theme/theme.dart';
 import '../plugin_widgets.dart' show PluginAvatar;
@@ -90,6 +91,8 @@ class ComposerStrip extends StatelessWidget {
       child: GlassSurface(
         tier: GlassTier.chrome,
         stadium: true,
+        grouped: DockBackdropScope.groupedOf(context),
+        blendMode: DockBackdropScope.blendModeOf(context),
         onTap: onTap,
         child: SizedBox(
           height: StripMetrics.height,

@@ -189,10 +189,8 @@ class _DockStackState extends ConsumerState<DockStack> with TickerProviderStateM
           // Folded, the deck takes the tap: the cards neither answer it nor read out.
           for (final card in widget.cards)
             DockBackdropScope(
-              // Grouped backdrop filters require disjoint bounds. Folded cards
-              // overlap by design, so let every card sample the chat behind it.
-              grouped: !deck || _curve.value >= 0.999,
-              blendMode: deck && _curve.value < 0.999 ? BlendMode.src : BlendMode.srcOver,
+              // Keep one filter per card through folding, fading and spread
+              // layouts; never reuse a snapshot across their separate layers.
               child: IgnorePointer(
                 ignoring: folded,
                 child: ExcludeSemantics(excluding: folded, child: card),
@@ -249,8 +247,9 @@ class _FoldButton extends StatelessWidget {
         key: const ValueKey('dock-fold'),
         tier: GlassTier.chrome,
         stadium: true,
-        // One backdrop sample with the deck's bars.
-        grouped: true,
+        // The fold button fades in its own opacity layer too.
+        grouped: false,
+        blendMode: BlendMode.src,
         onTap: onTap,
         child: SizedBox.square(
           dimension: DockStackMetrics.foldSize,

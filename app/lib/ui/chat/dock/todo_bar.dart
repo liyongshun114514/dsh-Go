@@ -136,6 +136,7 @@ class _TodoBarState extends State<TodoBar> {
       tier: GlassTier.chrome,
       borderRadius: DockMetrics.shape,
       grouped: DockBackdropScope.groupedOf(context),
+      blendMode: DockBackdropScope.blendModeOf(context),
       child: Material(
         type: MaterialType.transparency,
         child: Column(

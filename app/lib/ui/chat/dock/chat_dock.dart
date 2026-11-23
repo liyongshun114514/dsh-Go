@@ -25,7 +25,8 @@ class ChatDock extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Both bars blur the same backdrop and never overlap: one sample.
+    // Each bar keeps an independent backdrop filter, including during its
+    // reveal animation; the surrounding group must not combine their layers.
     return BackdropGroup(
       child: Column(
         mainAxisSize: MainAxisSize.min,

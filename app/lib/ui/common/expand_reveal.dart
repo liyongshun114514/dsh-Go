@@ -16,6 +16,7 @@ class ExpandReveal extends StatefulWidget {
     required this.child,
     this.duration = AppMotion.collapse,
     this.curve = AppMotion.collapseCurve,
+    this.clipWhenOpen = true,
   });
 
   final bool open;
@@ -24,6 +25,10 @@ class ExpandReveal extends StatefulWidget {
 
   /// 高度的缓动;要和别处同时动的东西(比如输入条上的胶囊)同步时换掉。
   final Curve curve;
+
+  /// Keep clipping after the reveal finishes. Disable for glass with an outer
+  /// shadow; the transition itself still clips while opening or closing.
+  final bool clipWhenOpen;
 
   @override
   State<ExpandReveal> createState() => _ExpandRevealState();
@@ -87,7 +92,20 @@ class _ExpandRevealState extends State<ExpandReveal> with SingleTickerProviderSt
         if (constraints.hasBoundedWidth) {
           child = SizedBox(width: constraints.maxWidth, child: child);
         }
-        return SizeTransition(sizeFactor: _size, alignment: AlignmentDirectional.topStart, child: child);
+        // Keep the same subtree when clipping changes, so a revealed card
+        // doesn't remount (and replay its own animations) at either endpoint.
+        return AnimatedBuilder(
+          animation: _size,
+          child: child,
+          builder: (context, child) => ClipRect(
+            clipBehavior: !widget.clipWhenOpen && _controller.isCompleted ? Clip.none : Clip.hardEdge,
+            child: Align(
+              alignment: AlignmentDirectional.topStart,
+              heightFactor: _size.value.clamp(0.0, double.infinity),
+              child: child,
+            ),
+          ),
+        );
       },
     );
   }

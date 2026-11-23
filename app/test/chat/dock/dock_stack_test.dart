@@ -156,7 +156,7 @@ void main() {
     expect((await SharedPreferences.getInstance()).getBool(DockFoldController.key), isTrue);
   });
 
-  testWidgets('overlapping folded cards disable grouped backdrop compositing', (tester) async {
+  testWidgets('folded and spread cards keep independent backdrop compositing', (tester) async {
     usePhoneView(tester);
     await tester.pumpWidget(_deck(const [_ScopeCard('first'), _ScopeCard('second')]));
     await pumpFrames(tester);
@@ -165,8 +165,8 @@ void main() {
 
     await tester.tap(find.byKey(const ValueKey('second')));
     await pumpFrames(tester);
-    expect(find.text('first:true:BlendMode.srcOver'), findsOneWidget);
-    expect(find.text('second:true:BlendMode.srcOver'), findsOneWidget);
+    expect(find.text('first:false:BlendMode.src'), findsOneWidget);
+    expect(find.text('second:false:BlendMode.src'), findsOneWidget);
   });
 
   testWidgets('the fold moves, it does not jump', (tester) async {
