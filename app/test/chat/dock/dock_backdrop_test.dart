@@ -284,33 +284,38 @@ void main() {
     usePhoneView(tester);
     final previousDisableShadows = debugDisableShadows;
     debugDisableShadows = false;
-    addTearDown(() => debugDisableShadows = previousDisableShadows);
-    const background = Color(0xFFF0F0F0);
-    List<Color>? reference;
-    for (final placement in ['bare', 'slot', 'stack']) {
-      Widget goal = GoalBar(goal: DockGoal(projection: goalOf()));
-      if (placement != 'bare') goal = DockSlot(child: goal);
-      if (placement == 'stack') goal = DockStack(cards: [goal]);
-      await tester.pumpWidget(_pixelScene(goal, background: background, shadows: true));
-      await pumpFrames(tester);
-      final rect = _inScene(tester, find.byType(GoalBar));
-      final pixels = await _Pixels.capture(tester, 'shadow-$placement');
-      final samples = [
-        for (final distance in [3.0, 9.0, 18.0]) pixels.at(Offset(rect.center.dx, rect.bottom + distance)),
-      ];
-      // Nine pixels below the pill is beyond DockSlot's six-pixel gap.
-      // A hard slot clip would abruptly restore the untouched background.
-      expect(samples[1].r, lessThan(background.r - 1 / 255), reason: '$placement shadow beyond slot');
-      expect(samples[2].computeLuminance(), greaterThan(samples[0].computeLuminance()), reason: '$placement shadow fades');
-      if (reference != null) {
-        for (var i = 0; i < samples.length; i++) {
-          for (final pair in [(samples[i].r, reference[i].r), (samples[i].g, reference[i].g), (samples[i].b, reference[i].b)]) {
-            expect(pair.$1, closeTo(pair.$2, 2 / 255), reason: '$placement matches unclipped bare shadow at $i');
+    // The binding verifies painting globals before addTearDown callbacks run.
+    // Restore in the test body, including when a pixel assertion throws.
+    try {
+      const background = Color(0xFFF0F0F0);
+      List<Color>? reference;
+      for (final placement in ['bare', 'slot', 'stack']) {
+        Widget goal = GoalBar(goal: DockGoal(projection: goalOf()));
+        if (placement != 'bare') goal = DockSlot(child: goal);
+        if (placement == 'stack') goal = DockStack(cards: [goal]);
+        await tester.pumpWidget(_pixelScene(goal, background: background, shadows: true));
+        await pumpFrames(tester);
+        final rect = _inScene(tester, find.byType(GoalBar));
+        final pixels = await _Pixels.capture(tester, 'shadow-$placement');
+        final samples = [
+          for (final distance in [3.0, 9.0, 18.0]) pixels.at(Offset(rect.center.dx, rect.bottom + distance)),
+        ];
+        // Nine pixels below the pill is beyond DockSlot's six-pixel gap.
+        // A hard slot clip would abruptly restore the untouched background.
+        expect(samples[1].r, lessThan(background.r - 1 / 255), reason: '$placement shadow beyond slot');
+        expect(samples[2].computeLuminance(), greaterThan(samples[0].computeLuminance()), reason: '$placement shadow fades');
+        if (reference != null) {
+          for (var i = 0; i < samples.length; i++) {
+            for (final pair in [(samples[i].r, reference[i].r), (samples[i].g, reference[i].g), (samples[i].b, reference[i].b)]) {
+              expect(pair.$1, closeTo(pair.$2, 2 / 255), reason: '$placement matches unclipped bare shadow at $i');
+            }
           }
         }
+        reference = samples;
+        await tester.pumpWidget(const SizedBox.shrink());
       }
-      reference = samples;
-      await tester.pumpWidget(const SizedBox.shrink());
+    } finally {
+      debugDisableShadows = previousDisableShadows;
     }
   });
 
