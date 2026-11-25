@@ -2,11 +2,11 @@
 
 App 以 APK 分发、不上商店，更新靠 App 自己查 GitHub Releases、下载、校验、调系统安装器。本文是发版约定和步骤，以及更新链路的取舍。代码在 `app/lib/update/`（检查、下载、校验）、`app/lib/state/update_state.dart`（状态与节流）、`app/lib/ui/update/`（设置行、弹窗）、`app/android/.../update/`（PackageInstaller 安装）。
 
-> **正式发版前必须先换成固定的发布密钥**（见「签名」）。存在 `app/android/key.properties` 时 release 使用其中的发布密钥；缺少配置时仅为本地构建回落到 debug key，不可用于正式发布。
+> **release 必须使用固定的项目发布密钥**（见「签名」）。缺少或未完整配置 `app/android/key.properties` 时，release 打包直接失败，不再回落到机器的 debug key。
 
 ## 资产约定
 
-每个版本一个 GitHub Release，仓库 `ccch1mneyyy/dsh-go`，必须公开（私有仓库匿名访问一律 404，App 只会显示「暂时检查不了」）。同一组文件也放在公开下载桶：`https://dl.dshtui.com/download/<版本>/<文件>`，最新版的清单在 `https://dl.dshtui.com/update.json`（见「公开下载桶 dl」）。
+每个版本一个 GitHub Release，仓库 `liyongshun114514/dsh-Go`，必须公开（私有仓库匿名访问一律 404，App 只会显示「暂时检查不了」）。App 默认只从该仓库的 Release 取更新：`<仓库>/releases/latest/download/update.json` 与同目录的资产，GitHub 不通时走公共加速镜像，最后才问 API。可选的公开下载桶见「公开下载桶 dl」，默认不启用（`DSH_UPDATE_MIRROR` 为空）。
 
 正式版统一提供 arm64 安装包。`update.json` 供更新清单回退读取，`SHA256SUMS` 供缺少 GitHub digest 时校验 APK，`*.dshdelta` 是从最近几个旧版升上来的增量补丁（`docs/design/delta-update.md`），都由 App 自己用，不要求用户手动下载。GitHub 自动生成的 Source code 压缩包是源码快照，不是安装包。
 
@@ -303,7 +303,7 @@ scripts/publish-release.sh ../../dist --github
 |---|---|
 | 页面和带令牌的 App | 上一版的清单设为最新（「内测通道」的回滚两行）。上一版若是旧脚本发的、清单里没有 `routes`，回滚后页面只给海外线路 |
 | 公开桶的 `update.json` | `npx wrangler r2 object get dshgo-dl/download/<上一版>/update.json --file prev.json --remote`，再 `npx wrangler r2 object put dshgo-dl/update.json --file prev.json --content-type 'application/json; charset=utf-8' --cache-control 'public, max-age=300' --remote`（环境变量同上）；边缘最多再给 5 分钟旧的。上一版没传过公开桶（回滚的是第一个走 dl 的版本）时没有可回的清单，删掉 `dshgo-dl/update.json` 即可 |
-| GitHub 上的这一版 | `gh release edit v<版本> --repo ccch1mneyyy/dsh-go --draft=true` 撤回成草稿，`releases/latest` 回到上一版；彻底删除用 `gh release delete v<版本> --repo ccch1mneyyy/dsh-go --cleanup-tag` |
+| GitHub 上的这一版 | `gh release edit v<版本> --repo liyongshun114514/dsh-Go --draft=true` 撤回成草稿，`releases/latest` 回到上一版；彻底删除用 `gh release delete v<版本> --repo liyongshun114514/dsh-Go --cleanup-tag` |
 | 香港桶 | 不用动：页面跟着清单走，不再指向新版；要删就删 `<版本>/` |
 | 公开下载 | `DOWNLOAD_ACCESS` 改回 `"key"` 再部署 |
 
@@ -343,7 +343,7 @@ AE 只留约 3 个月，想长期保留就定期把输出存下来。
 
 ## 签名
 
-Android 只接受和已装版本**同一签名**的覆盖安装。`build.gradle.kts` 从 `app/android/key.properties` 读取发布签名；配置缺失时回落到打包机器的 `~/.android/debug.keystore`，仅供本地构建。正式发版必须先配置发布密钥。
+Android 只接受和已装版本**同一签名**的覆盖安装。`build.gradle.kts` 从 `app/android/key.properties` 读取发布签名；缺少或配置不完整时 release 打包失败，debug 开发包不受影响。不要在每次构建时重新生成密钥。
 
 做法：生成一把发布密钥，只在发版机器上用，并离线备份（丢了等于以后再也发不了更新，所有用户都得卸载重装）。
 
@@ -360,30 +360,21 @@ keyAlias=dsh
 keyPassword=…
 ```
 
-`app/android/app/build.gradle.kts`：
+本项目的固定发布证书 SHA-256 保存在 `app/android/release-certificate.sha256`（公开信息，不含私钥）。`tooling/configure_android_signing.py` 会核对证书，再生成权限为 `0600` 的忽略文件 `key.properties`，不会覆盖已有配置或输出口令。
 
-```kotlin
-import java.util.Properties
+GitHub Actions 需要一次性配置以下 Repository Secrets，**每次都复用同一份值**：
 
-val keyProps = Properties().apply {
-    rootProject.file("key.properties").takeIf { it.exists() }?.inputStream()?.use { load(it) }
-}
+- `DSH_ANDROID_KEYSTORE_BASE64`：固定 keystore 的完整 Base64 内容。
+- `DSH_ANDROID_KEY_ALIAS`：固定 alias。
+- `DSH_ANDROID_STORE_PASSWORD`：keystore 口令。
+- `DSH_ANDROID_KEY_PASSWORD`：私钥口令。
 
-android {
-    signingConfigs {
-        create("release") {
-            storeFile = keyProps.getProperty("storeFile")?.let { file(it) }
-            storePassword = keyProps.getProperty("storePassword")
-            keyAlias = keyProps.getProperty("keyAlias")
-            keyPassword = keyProps.getProperty("keyPassword")
-        }
-    }
-    buildTypes {
-        release {
-            signingConfig = signingConfigs.getByName(if (keyProps.isEmpty) "debug" else "release")
-        }
-    }
-}
+工作流只解码并复用密钥，不生成密钥；缺少 Secrets 或证书与固定指纹不同就失败。最终 APK 还会通过 `apksigner verify` 检查签名并比对同一指纹。私钥和口令必须保存在仓库外并安全离线备份，禁止加入 git 或普通构建产物。
+
+本地配置时设置上述 alias 和口令环境变量，然后执行（不要把口令写进 shell 历史）：
+
+```sh
+python3 tooling/configure_android_signing.py --keystore /home/you/keys/dsh-release.jks
 ```
 
 **换钥匙的代价**：已经装了 debug 签名版的人，第一次更新会被系统拒绝。App 会在安装前比对签名，提示「签名不一致，不能直接覆盖」，引导去发布页下载；他们得**卸载旧版再装新版一次**，卸载会清空本地数据（对话、Linux 环境、设置、Keystore 里的 API Key）。之后的更新都正常。
@@ -456,8 +447,8 @@ App 这边（`app/lib/update/delta.dart`、`app/lib/state/update_state.dart`）�
 
 | 源 | 用于 | 好处 | 坏处 |
 |---|---|---|---|
-| 内测通道 `go.dshtui.com/beta/update.json`（带通道令牌的包才有，永远排第一，不参与「上次成功排最前」） | 元数据 + APK（同一令牌） | 不公开；国内可达；发版即生效 | 令牌编在包里，可被提取；没令牌的包用不了 |
-| 自有下载站 `dl.dshtui.com`（R2 公共桶，所有包默认都有） | 元数据 `/update.json`（最新公开版，资产带绝对地址）+ APK 和补丁 `/download/<版本>/<文件>`（下载也排第一） | 自己的，完全可控；不占 GitHub 配额；有补丁 | 流量和可达性要自己盯；国内速度看 Cloudflare 线路 |
+| 内测通道（默认不启用；构建时同时给出 `DSH_BETA_CHANNEL_TOKEN` 和 `DSH_BETA_CHANNEL_ORIGIN` 才有，示例 `go.dshtui.com/beta/update.json`；永远排第一，不参与「上次成功排最前」） | 元数据 + APK（同一令牌） | 不公开；国内可达；发版即生效 | 令牌编在包里，可被提取；没令牌的包用不了 |
+| 自有下载站（默认没有；只有带 `DSH_UPDATE_MIRROR` 构建的包才有，示例 `dl.dshtui.com`） | 元数据 `/update.json`（最新公开版，资产带绝对地址）+ APK 和补丁 `/download/<版本>/<文件>`（下载也排第一） | 自己的，完全可控；不占 GitHub 配额；有补丁 | 流量和可达性要自己盯；国内速度看 Cloudflare 线路 |
 | `github.com/…/releases/latest/download/update.json` | 元数据 + APK | 不占 API 配额；和 APK 同一个 CDN | 国内常慢或不通 |
 | 公共加速镜像（默认 `ghfast.top`、`gh-proxy.com`） | 元数据 + APK | 零成本，国内大多能用 | 第三方：随时失效、换域名（几个月一换很常见），有的整段网络一律 403（`ghfast.top` 2026-11 起从我们机器出去全是 403，仍留在列表里，被拒只多一次请求）；能看到下载者 IP；大文件可能限速；理论上能篡改内容（见下） |
 | GitHub API `releases/latest`（最后） | 元数据 | 官方；带 digest，不额外请求校验和 | 匿名 60 次/小时/IP，校园网、运营商 NAT 和代理出口下常常已经 403；回答里没有补丁；国内常超时 |
@@ -466,10 +457,10 @@ App 这边（`app/lib/update/delta.dart`、`app/lib/state/update_state.dart`）�
 
 | 变量 | 作用 |
 |---|---|
-| `DSH_UPDATE_MIRROR=https://…` | 换掉 `dl.dshtui.com`（同样的 `/update.json` + `/download/<版本>/<文件>` 布局）；设成空串就不用自有站，只剩 GitHub 和加速镜像 |
+| `DSH_UPDATE_MIRROR=https://…` | 加一个自有下载站（`/update.json` + `/download/<版本>/<文件>` 布局），排在 GitHub 前；默认空 = 不用自有站，只有 GitHub 和加速镜像 |
 | `DSH_UPDATE_FEED=https://…/update.json` | 只换要问的清单，下载仍先试自有站；空串 = 不问清单 |
 | `DSH_UPDATE_MIRRORS=a,b` | 换掉公共加速镜像列表（前缀 + 完整 GitHub 地址）；空串 = 不用 |
-| `DSH_BETA_CHANNEL_ORIGIN` | 换内测通道的域名 |
+| `DSH_BETA_CHANNEL_ORIGIN` | 内测通道的域名；和通道令牌同时给出才启用，默认空 = 不启用 |
 | `DSH_WORKSHOP_ORIGIN=https://…` | 换创意工坊的部署，默认 `https://go.dshtui.com`；空串 = 这个包不带工坊入口 |
 
 公共镜像要定期确认还活着，失效的直接从列表删。

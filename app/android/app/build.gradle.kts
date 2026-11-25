@@ -1,3 +1,5 @@
+import java.security.KeyStore
+import java.security.MessageDigest
 import java.time.OffsetDateTime
 import java.time.ZoneOffset
 import java.util.Properties
@@ -155,8 +157,9 @@ android {
             if (hasWholeReleaseKey) signingConfig = signingConfigs.getByName("release")
         }
         release {
-            // Use the release key when configured; local builds without key.properties fall back to debug.
-            signingConfig = signingConfigs.getByName(if (keyProps.isEmpty) "debug" else "release")
+            // Never sign release builds with a machine-specific debug key.
+            // validateSigning*Release rejects a missing or incomplete fixed key.
+            if (hasWholeReleaseKey) signingConfig = signingConfigs.getByName("release")
             // Ours on top of Flutter's: phone control's privileged process and
             // its TLS libraries are reached by class name (see the file).
             proguardFiles("proguard-rules.pro")
@@ -167,6 +170,36 @@ android {
 kotlin {
     compilerOptions {
         jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17
+    }
+}
+
+// Reject missing, incomplete or substituted keys before packaging APK/AAB.
+// Debug builds remain available without a release key.
+val verifyReleaseSigning = tasks.register("verifyFixedReleaseSigning") {
+    doLast {
+        check(hasWholeReleaseKey) {
+            "Release signing requires a complete app/android/key.properties and the fixed project keystore."
+        }
+        val expected = rootProject.file("release-certificate.sha256").readText().trim().lowercase()
+        val actual = try {
+            val store = KeyStore.getInstance(file(keyProps.getProperty("storeFile")),
+                keyProps.getProperty("storePassword").toCharArray())
+            val alias = keyProps.getProperty("keyAlias")
+            check(store.getKey(alias, keyProps.getProperty("keyPassword").toCharArray()) != null)
+            MessageDigest.getInstance("SHA-256").digest(store.getCertificate(alias).encoded)
+                .joinToString("") { "%02x".format(it.toInt() and 0xff) }
+        } catch (_: Exception) {
+            // Do not attach an exception that could contain private paths or credentials.
+            throw GradleException("Cannot open the fixed release signing key.")
+        }
+        check(actual == expected) { "Release signing certificate differs from the pinned project certificate." }
+    }
+}
+tasks.configureEach {
+    if ((name.startsWith("pre") || name.startsWith("validateSigning") || name.startsWith("package") ||
+            name.startsWith("sign") || name.startsWith("assemble") || name.startsWith("bundle")) &&
+        (name.endsWith("Release") || name.endsWith("ReleaseBuild") || name.endsWith("ReleaseBundle"))) {
+        dependsOn(verifyReleaseSigning)
     }
 }
 

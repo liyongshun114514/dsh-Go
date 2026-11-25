@@ -34,6 +34,9 @@ jobs:
       - name: Test companion pack checks
         run: python3 -m unittest discover -s tooling -p 'test_companion_pack.py' -v
 
+      - name: Test fixed signing configuration
+        run: python3 -m unittest discover -s tooling -p 'test_configure_android_signing.py' -v
+
       - name: Place verified built-in companion pack
         run: |
           # Use only the licensed companion pack already shipped with this official APK.
@@ -69,6 +72,14 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
+
+      - name: Configure fixed release signing
+        env:
+          DSH_ANDROID_KEYSTORE_BASE64: ${{ secrets.DSH_ANDROID_KEYSTORE_BASE64 }}
+          DSH_ANDROID_KEY_ALIAS: ${{ secrets.DSH_ANDROID_KEY_ALIAS }}
+          DSH_ANDROID_STORE_PASSWORD: ${{ secrets.DSH_ANDROID_STORE_PASSWORD }}
+          DSH_ANDROID_KEY_PASSWORD: ${{ secrets.DSH_ANDROID_KEY_PASSWORD }}
+        run: python3 -I tooling/configure_android_signing.py --decode-to "$RUNNER_TEMP/dsh-go-release.p12"
 
       - name: Build bundled tawcroot launcher
         run: |
@@ -112,6 +123,12 @@ jobs:
           test/chat/dock/dock_backdrop_test.dart
           test/landscape/landscape_geometry_test.dart
 
+      - name: Test update sources
+        working-directory: app
+        env:
+          DSH_TEST_FONT_DIR: /usr/share/fonts/opentype/noto
+        run: flutter test --no-pub test/update
+
       - name: Upload dock rendering previews
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -138,6 +155,11 @@ jobs:
           test "$("$apkanalyzer" manifest application-id "$apk")" = io.github.ccch1mneyyy.dsh_app_next
           test "$("$apkanalyzer" manifest version-name "$apk")" = "$APK_VERSION"
           test "$("$apkanalyzer" manifest version-code "$apk")" = "$APK_CODE"
+          apksigner="$ANDROID_HOME/build-tools/$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -n 1)/apksigner"
+          "$apksigner" verify --verbose --min-sdk-version 21 --print-certs "$apk" > "$RUNNER_TEMP/apk-signature.txt"
+          expected=$(tr -d '\r\n' < app/android/release-certificate.sha256)
+          actual=$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' "$RUNNER_TEMP/apk-signature.txt")
+          test "$actual" = "$expected"
           python3 tooling/check_apk_runtime.py "$apk" --manifest "$RUNNER_TEMP/apk-manifest.xml"
           python3 -I tooling/check_apk_jni.py "$apk"
           python3 -I tooling/companion_pack.py check-release "$apk"
