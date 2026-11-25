@@ -149,9 +149,9 @@ android {
                 storePassword = keyProps.getProperty("storePassword")
                 keyAlias = keyProps.getProperty("keyAlias")
                 keyPassword = keyProps.getProperty("keyPassword")
-                // All three schemes: AGP drops v1 for minSdk 24+, but some installers and
-                // security scanners on Chinese ROMs still read the JAR signature.
-                enableV1Signing = true
+                // v2/v3 are what Android checks from minSdk 26 on; AGP 9 no longer
+                // writes a v1 JAR signature even when asked, so this stays off.
+                enableV1Signing = false
                 enableV2Signing = true
                 enableV3Signing = true
             }
