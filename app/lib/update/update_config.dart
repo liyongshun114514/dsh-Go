@@ -1,27 +1,34 @@
 /// Where in-app updates come from. Everything network-facing about updates is
 /// configured here; the conventions and trade-offs are in `docs/release.md`.
 ///
-/// Every build asks our own copy of the release files first
-/// ([updateDownloadOrigin]: `/update.json`, `/download/<version>/<file>`), then
-/// GitHub and the public accelerators, and the rate-limited GitHub API last.
-/// Beta builds carry a channel token (`--dart-define=DSH_BETA_CHANNEL_TOKEN`,
-/// put in by `tooling/build-apk.sh`): they ask the beta channel before all of
-/// that ([UpdateChannel], `go.dshtui.com/beta/update.json`,
-/// docs/design/share-links.md) and download from it with the token.
+/// Every build asks [updateRepo]'s GitHub release first: `update.json` on the
+/// latest release, then `releases/latest` through the public accelerators, and
+/// the rate-limited GitHub API last. A build can also carry a self-hosted copy
+/// of the release files, which is then asked before GitHub, and a beta channel
+/// token (`--dart-define=DSH_BETA_CHANNEL_TOKEN`, put in by
+/// `tooling/build-apk.sh`), which is asked before everything else once its
+/// origin is configured.
 ///
 /// Build-time overrides (no code change needed):
-/// - `--dart-define=DSH_BETA_CHANNEL_ORIGIN=https://example.com` moves the beta
-///   channel;
-/// - `--dart-define=DSH_UPDATE_MIRROR=https://example.com` moves the copy of
-///   the release files (empty string = none);
+/// - `--dart-define=DSH_BETA_CHANNEL_ORIGIN=https://example.com` configures the
+///   beta channel; both it and the token are required;
+/// - `--dart-define=DSH_UPDATE_MIRROR=https://example.com` adds a self-hosted
+///   copy of the release files (`/update.json`, `/download/<version>/<file>`);
+///   empty (the default) means GitHub only;
 /// - `--dart-define=DSH_UPDATE_FEED=https://example.com/dsh/update.json`
 ///   asks another manifest in place of the copy's (empty string = none);
 /// - `--dart-define=DSH_UPDATE_MIRRORS=https://a.example/,https://b.example/`
 ///   replaces the public GitHub accelerator list (empty string = none).
 library;
 
-/// GitHub repository the releases live in.
-const updateRepo = 'ccch1mneyyy/dsh-go';
+/// GitHub repository the releases live in: what update checks and downloads
+/// ask.
+const updateRepo = 'liyongshun114514/dsh-Go';
+
+/// GitHub repository the app's own links point at (sharing, the community
+/// feed, the star prompt). Kept apart from [updateRepo] so moving the update
+/// channel never silently repoints user-facing links.
+const projectRepo = 'ccch1mneyyy/dsh-go';
 
 /// `releases/latest` of the REST API: tag, notes, assets with sizes and
 /// SHA-256 digests. Unauthenticated: 60 requests per hour per IP.
@@ -38,25 +45,17 @@ Uri githubLatestAsset(String name) => Uri.parse('https://github.com/$updateRepo/
 Uri githubReleaseAsset(String tag, String name) =>
     Uri.parse('https://github.com/$updateRepo/releases/download/$tag/$name');
 
-/// The share host (services/share-worker). It serves the beta channel under
-/// `/beta/`; public files come from [updateDownloadOrigin].
-const updateMirrorOrigin = 'https://go.dshtui.com';
-
-/// Our public copy of the release files (an R2 bucket): `/update.json`, the
-/// latest public manifest with absolute asset URLs, and
-/// `/download/<version>/<file>` for every file of every release.
-const updateDownloadOrigin = 'https://dl.dshtui.com';
-
 /// The beta channel: `<origin>/beta/update.json` and `<origin>/beta/<version>/<file>`,
 /// both behind `Authorization: Bearer <token>`. The token is compiled into beta
 /// builds; it only ever goes to [origin] over HTTPS, under `/beta/` (dart:io
-/// also drops it on a redirect to another origin).
+/// also drops it on a redirect to another origin). No origin is configured by
+/// default, so a token alone never sends anything anywhere.
 class UpdateChannel {
   UpdateChannel._(this.origin, this.token);
 
-  /// Null when [token] is empty or [origin] isn't an HTTPS origin (plain HTTP
-  /// only for a loopback test server).
-  static UpdateChannel? tryCreate({required String token, String origin = updateMirrorOrigin}) {
+  /// Null when [token] is empty, [origin] is empty, or [origin] isn't an HTTPS
+  /// origin (plain HTTP only for a loopback test server).
+  static UpdateChannel? tryCreate({required String token, String origin = ''}) {
     final t = token.trim();
     final uri = Uri.tryParse(origin.trim().replaceFirst(RegExp(r'/+$'), ''));
     if (t.isEmpty || uri == null || uri.host.isEmpty || (uri.path.isNotEmpty && uri.path != '/')) return null;
@@ -104,8 +103,9 @@ class UpdateMirror {
 
   static const github = UpdateMirror(id: 'github', label: 'GitHub');
 
-  /// The app's own mirror at [origin] (default [updateDownloadOrigin]).
-  static UpdateMirror selfHosted([String origin = updateDownloadOrigin]) {
+  /// The app's own mirror at [origin], the base of a self-hosted copy of the
+  /// release files.
+  static UpdateMirror selfHosted(String origin) {
     final base = origin.endsWith('/') ? origin.substring(0, origin.length - 1) : origin;
     return UpdateMirror(id: 'dshgo', label: Uri.tryParse(base)?.host ?? base, releases: '$base/download/');
   }
@@ -134,22 +134,21 @@ class UpdateMirror {
   }
 }
 
-/// Public GitHub accelerators, tried in order after our copy and GitHub
-/// itself. They come and go (domains change every few months, and some answer
-/// 403 to whole networks); everything they serve is checked against the
-/// release's SHA-256 and, at install time, against the installed app's
-/// signing key.
+/// Public GitHub accelerators, tried in order after GitHub itself. They come
+/// and go (domains change every few months, and some answer 403 to whole
+/// networks); everything they serve is checked against the release's SHA-256
+/// and, at install time, against the installed app's signing key.
 const publicMirrors = [
   UpdateMirror(id: 'ghfast', label: 'ghfast.top', prefix: 'https://ghfast.top/'),
   UpdateMirror(id: 'gh-proxy', label: 'gh-proxy.com', prefix: 'https://gh-proxy.com/'),
 ];
 
 const _unset = '\u0000';
-const _mirrorDefine = String.fromEnvironment('DSH_UPDATE_MIRROR', defaultValue: updateDownloadOrigin);
+const _mirrorDefine = String.fromEnvironment('DSH_UPDATE_MIRROR', defaultValue: '');
 const _feedDefine = String.fromEnvironment('DSH_UPDATE_FEED', defaultValue: _unset);
 const _mirrorsDefine = String.fromEnvironment('DSH_UPDATE_MIRRORS', defaultValue: _unset);
 const _betaTokenDefine = String.fromEnvironment('DSH_BETA_CHANNEL_TOKEN');
-const _betaOriginDefine = String.fromEnvironment('DSH_BETA_CHANNEL_ORIGIN', defaultValue: updateMirrorOrigin);
+const _betaOriginDefine = String.fromEnvironment('DSH_BETA_CHANNEL_ORIGIN', defaultValue: '');
 
 /// The configuration the app ships with (see the library comment for overrides).
 UpdateSources defaultUpdateSources() => buildUpdateSources(
@@ -161,16 +160,16 @@ UpdateSources defaultUpdateSources() => buildUpdateSources(
 );
 
 /// [defaultUpdateSources] from the defines' values: [mirror] is the origin of
-/// a copy of the release files ('' = none); [feed] another manifest to ask
-/// (null = the mirror's, '' = none); [accelerators] a comma list replacing
-/// [publicMirrors] (null = keep them); [channelToken] turns on the beta
-/// channel at [channelOrigin] ('' = off).
+/// a copy of the release files ('' = none, the shipped default); [feed] another
+/// manifest to ask (null = the mirror's, '' = none); [accelerators] a comma
+/// list replacing [publicMirrors] (null = keep them); [channelToken] and
+/// [channelOrigin] turn on the beta channel (either empty = off).
 UpdateSources buildUpdateSources({
-  String mirror = updateDownloadOrigin,
+  String mirror = '',
   String? feed,
   String? accelerators,
   String channelToken = '',
-  String channelOrigin = updateMirrorOrigin,
+  String channelOrigin = '',
 }) {
   final origin = mirror.trim().replaceFirst(RegExp(r'/+$'), '');
   final own = origin.isEmpty ? null : UpdateMirror.selfHosted(origin);
