@@ -149,16 +149,25 @@ jobs:
 
       - name: Verify packaged runtime, launcher, JNI and companion pack
         run: |
+          set -x
           apk=app/build/app/outputs/apk/arm64/release/app-arm64-release.apk
           apkanalyzer=$(command -v apkanalyzer)
           "$apkanalyzer" manifest print "$apk" > "$RUNNER_TEMP/apk-manifest.xml"
-          test "$("$apkanalyzer" manifest application-id "$apk")" = io.github.ccch1mneyyy.dsh_app_next
-          test "$("$apkanalyzer" manifest version-name "$apk")" = "$APK_VERSION"
-          test "$("$apkanalyzer" manifest version-code "$apk")" = "$APK_CODE"
+          package=$("$apkanalyzer" manifest application-id "$apk")
+          name=$("$apkanalyzer" manifest version-name "$apk")
+          code=$("$apkanalyzer" manifest version-code "$apk")
+          printf 'package=%s name=%s code=%s\n' "$package" "$name" "$code"
+          test "$package" = io.github.ccch1mneyyy.dsh_app_next
+          test "$name" = "$APK_VERSION"
+          test "$code" = "$APK_CODE"
           apksigner="$ANDROID_HOME/build-tools/$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -n 1)/apksigner"
-          "$apksigner" verify --verbose --min-sdk-version 21 --print-certs "$apk" > "$RUNNER_TEMP/apk-signature.txt"
-          expected=$(tr -d '\r\n' < app/android/release-certificate.sha256)
-          actual=$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' "$RUNNER_TEMP/apk-signature.txt")
+          # AGP 9 no longer writes a v1 JAR signature; minSdk 26 means v2/v3 is
+          # what Android checks. Verifying at 21 would demand v1 and fail.
+          "$apksigner" verify --verbose --min-sdk-version 26 --print-certs "$apk" | tee "$RUNNER_TEMP/apk-signature.txt"
+          expected=$(tr -d '\r\n' < app/android/release-certificate.sha256 | tr 'A-F' 'a-f')
+          actual=$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' "$RUNNER_TEMP/apk-signature.txt" | tr -d '\r\n' | tr 'A-F' 'a-f')
+          printf 'expected=%s\nactual=%s\n' "$expected" "$actual"
+          test -n "$actual"
           test "$actual" = "$expected"
           python3 tooling/check_apk_runtime.py "$apk" --manifest "$RUNNER_TEMP/apk-manifest.xml"
           python3 -I tooling/check_apk_jni.py "$apk"
